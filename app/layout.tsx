@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import PanelNavigation from "./panel-navigation";
 import SourceHealthPanel from "./source-health-panel";
+import OperationalAlerts from "./operational-alerts";
 
 export const metadata: Metadata = {
   title: "Baja & Aguiar | Central de Performance",
@@ -14,6 +15,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body>
         <PanelNavigation />
         <SourceHealthPanel />
+        <OperationalAlerts />
         {children}
       </body>
     </html>
