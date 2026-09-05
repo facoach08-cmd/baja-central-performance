@@ -15,14 +15,14 @@ type Client = {
 };
 
 const seed: Client[] = [
-  { name: "Múltipla", segment: "Comercial", panel: "Painel de Vendedores", status: "Online", monitor: "Painel Vercel conectado", panelUrl: "https://nextjs-boilerplate.vercel.app/multipla", feedUrl: "", baseUrl: "" },
+  { name: "Múltipla", segment: "Comercial", panel: "Painel de Vendedores", status: "Online", monitor: "Painel Vercel conectado", panelUrl: "https://nextjs-boilerplate-f4cio1dzt-facoach08-2672s-projects.vercel.app/multipla", feedUrl: "", baseUrl: "" },
   { name: "Água Viva", segment: "Comercial", panel: "Painel Comercial", status: "Online", monitor: "Painel Vercel conectado", panelUrl: "https://painel-comercial-agua-viva.vercel.app", feedUrl: "", baseUrl: "" },
   { name: "Casa da Borracha", segment: "Expedição", panel: "Painel de Expedição", status: "Online", monitor: "Painel Vercel conectado", panelUrl: "https://painel-expedicao-publico.vercel.app", feedUrl: "", baseUrl: "" },
   { name: "Montes", segment: "Financeiro", panel: "Painel Financeiro", status: "Online", monitor: "Painel Vercel conectado", panelUrl: "https://casa-montes-painel.vercel.app", feedUrl: "", baseUrl: "" },
 ];
 
 const nav = ["Início", "Clientes", "Painéis", "Alertas", "Usuários", "Configurações"];
-const STORAGE_KEY = "baja-central-performance-clients-v1";
+const STORAGE_KEY = "baja-central-performance-clients-v2";
 
 function Badge({ status }: { status: Status }) {
   const cls = status === "Online" ? "bg-emerald-50 text-emerald-700" : status === "Atenção" ? "bg-amber-50 text-amber-700" : "bg-red-50 text-red-700";
