@@ -29,6 +29,8 @@ type ClientHealth = {
   source_health_status: "ok" | "critical" | "attention";
 };
 
+type Draft = { required: boolean; hours: number };
+
 function fmt(value: string | null) {
   if (!value) return "Sem leitura";
   return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
@@ -37,9 +39,13 @@ function fmt(value: string | null) {
 export default function SourceHealthPanel() {
   const [open, setOpen] = useState(false);
   const [allowed, setAllowed] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [clients, setClients] = useState<ClientHealth[]>([]);
   const [sources, setSources] = useState<SourceHealth[]>([]);
   const [loading, setLoading] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -47,9 +53,10 @@ export default function SourceHealthPanel() {
       const { data: sessionData } = await supabase.auth.getSession();
       const user = sessionData.session?.user;
       if (!user || !mounted) return;
-      const { data: profile } = await supabase.from("baja_central_profiles").select("active").eq("user_id", user.id).maybeSingle();
+      const { data: profile } = await supabase.from("baja_central_profiles").select("active,role").eq("user_id", user.id).maybeSingle();
       if (!mounted || !profile?.active) return;
       setAllowed(true);
+      setIsAdmin(profile.role === "admin");
       await load();
     }
     void boot();
@@ -64,8 +71,35 @@ export default function SourceHealthPanel() {
       supabase.from("baja_central_source_health").select("*").eq("active", true).order("source_name"),
     ]);
     if (!clientResult.error) setClients((clientResult.data || []) as ClientHealth[]);
-    if (!sourceResult.error) setSources((sourceResult.data || []) as SourceHealth[]);
+    if (!sourceResult.error) {
+      const next = (sourceResult.data || []) as SourceHealth[];
+      setSources(next);
+      setDrafts(Object.fromEntries(next.map(s => [s.id, { required: s.required, hours: s.expected_frequency_hours }])));
+    }
     setLoading(false);
+  }
+
+  async function saveSettings(source: SourceHealth) {
+    if (!isAdmin) return;
+    const draft = drafts[source.id];
+    if (!draft) return;
+    if (!Number.isFinite(draft.hours) || draft.hours < 1 || draft.hours > 720) {
+      setNotice("A frequência precisa ficar entre 1 e 720 horas.");
+      return;
+    }
+    setBusyId(source.id);
+    setNotice("");
+    const { error } = await supabase.rpc("baja_central_admin_update_source_settings", {
+      p_source_id: source.id,
+      p_required: draft.required,
+      p_expected_frequency_hours: Math.round(draft.hours),
+    });
+    if (error) setNotice(`Não foi possível salvar ${source.source_name}: ${error.message}`);
+    else {
+      setNotice(`Regra de ${source.source_name} atualizada.`);
+      await load();
+    }
+    setBusyId(null);
   }
 
   const lateCount = useMemo(() => sources.filter(s => s.required && (s.freshness_status === "late" || s.freshness_status === "missing")).length, [sources]);
@@ -77,12 +111,38 @@ export default function SourceHealthPanel() {
     </button>
 
     {open && <div className="fixed inset-0 z-[80] bg-slate-950/45" onClick={() => setOpen(false)}>
-      <aside className="ml-auto h-full w-full max-w-2xl overflow-y-auto bg-[#f4f7fb] p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
+      <aside className="ml-auto h-full w-full max-w-3xl overflow-y-auto bg-[#f4f7fb] p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-4"><div><div className="text-xs font-semibold uppercase tracking-[.16em] text-blue-600">Monitoramento operacional</div><h2 className="mt-1 text-2xl font-bold text-[#0b3977]">Saúde das Fontes</h2><p className="mt-1 text-sm text-slate-500">Um cliente fica crítico se qualquer fonte obrigatória estiver atrasada ou sem leitura.</p></div><button onClick={() => setOpen(false)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold">Fechar</button></div>
+
+        {notice && <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">{notice}</div>}
 
         <div className="mt-5 grid gap-3 sm:grid-cols-3"><div className="rounded-2xl border border-slate-200 bg-white p-4"><div className="text-xs text-slate-500">Clientes</div><div className="mt-1 text-2xl font-bold text-[#0b3977]">{clients.length}</div></div><div className="rounded-2xl border border-slate-200 bg-white p-4"><div className="text-xs text-slate-500">Fontes obrigatórias</div><div className="mt-1 text-2xl font-bold text-[#0b3977]">{sources.filter(s => s.required).length}</div></div><div className={`rounded-2xl border p-4 ${lateCount > 0 ? "border-red-200 bg-red-50" : "border-emerald-200 bg-emerald-50"}`}><div className="text-xs text-slate-500">Atrasadas / sem leitura</div><div className={`mt-1 text-2xl font-bold ${lateCount > 0 ? "text-red-700" : "text-emerald-700"}`}>{lateCount}</div></div></div>
 
-        <div className="mt-5 grid gap-4">{clients.map(client => { const clientSources = sources.filter(s => s.client_id === client.client_id); const problemCount = client.late_required_sources + client.missing_required_sources; const critical = client.source_health_status === "critical"; return <section key={client.client_id} className={`rounded-2xl border bg-white p-5 shadow-sm ${critical ? "border-red-200" : "border-slate-200"}`}><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-bold text-[#0b3977]">{client.client_name}</h3><p className="mt-1 text-sm text-slate-500">{problemCount > 0 ? `${problemCount} de ${client.required_sources} fonte(s) obrigatória(s) com problema` : `${client.required_sources} fonte(s) obrigatória(s) em dia`}</p></div><span className={`rounded-full px-3 py-1 text-xs font-semibold ${critical ? "bg-red-100 text-red-700" : client.source_health_status === "attention" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>{critical ? "Crítico" : client.source_health_status === "attention" ? "Atenção" : "Saudável"}</span></div><div className="mt-4 grid gap-2">{clientSources.map(source => { const problem = source.required && (source.freshness_status === "late" || source.freshness_status === "missing"); return <div key={source.id} className={`rounded-xl border p-3 ${problem ? "border-red-100 bg-red-50/50" : "border-slate-100 bg-slate-50"}`}><div className="flex flex-wrap items-center justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><span className="text-sm font-semibold">{source.source_name}</span><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${source.required ? "bg-blue-50 text-blue-700" : "bg-slate-200 text-slate-600"}`}>{source.required ? "Obrigatória" : "Opcional"}</span></div><div className="mt-1 text-xs text-slate-400">Última modificação: {fmt(source.last_provider_modified_at)} · esperado a cada {source.expected_frequency_hours}h</div></div><div className="flex items-center gap-2"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${problem ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>{source.freshness_status === "missing" ? "Sem leitura" : source.freshness_status === "late" ? `Atrasada ${source.age_hours ?? ""}h` : source.freshness_status === "optional" ? "Opcional" : "Em dia"}</span><a href={source.source_url} target="_blank" rel="noreferrer" className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Abrir</a></div></div></div>; })}</div></section>; })}</div>
+        <div className="mt-5 grid gap-4">{clients.map(client => {
+          const clientSources = sources.filter(s => s.client_id === client.client_id);
+          const problemCount = client.late_required_sources + client.missing_required_sources;
+          const critical = client.source_health_status === "critical";
+          return <section key={client.client_id} className={`rounded-2xl border bg-white p-5 shadow-sm ${critical ? "border-red-200" : "border-slate-200"}`}>
+            <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-bold text-[#0b3977]">{client.client_name}</h3><p className="mt-1 text-sm text-slate-500">{problemCount > 0 ? `${problemCount} de ${client.required_sources} fonte(s) obrigatória(s) com problema` : `${client.required_sources} fonte(s) obrigatória(s) em dia`}</p></div><span className={`rounded-full px-3 py-1 text-xs font-semibold ${critical ? "bg-red-100 text-red-700" : client.source_health_status === "attention" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>{critical ? "Crítico" : client.source_health_status === "attention" ? "Atenção" : "Saudável"}</span></div>
+            <div className="mt-4 grid gap-2">{clientSources.map(source => {
+              const problem = source.required && (source.freshness_status === "late" || source.freshness_status === "missing");
+              const draft = drafts[source.id] || { required: source.required, hours: source.expected_frequency_hours };
+              const changed = draft.required !== source.required || draft.hours !== source.expected_frequency_hours;
+              return <div key={source.id} className={`rounded-xl border p-3 ${problem ? "border-red-100 bg-red-50/50" : "border-slate-100 bg-slate-50"}`}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-[220px] flex-1"><div className="flex flex-wrap items-center gap-2"><span className="text-sm font-semibold">{source.source_name}</span><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${source.required ? "bg-blue-50 text-blue-700" : "bg-slate-200 text-slate-600"}`}>{source.required ? "Obrigatória" : "Opcional"}</span></div><div className="mt-1 text-xs text-slate-400">Última modificação: {fmt(source.last_provider_modified_at)} · esperado a cada {source.expected_frequency_hours}h</div></div>
+                  <div className="flex items-center gap-2"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${problem ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>{source.freshness_status === "missing" ? "Sem leitura" : source.freshness_status === "late" ? `Atrasada ${source.age_hours ?? ""}h` : source.freshness_status === "optional" ? "Opcional" : "Em dia"}</span><a href={source.source_url} target="_blank" rel="noreferrer" className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Abrir</a></div>
+                </div>
+
+                {isAdmin && <div className="mt-3 grid gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+                  <label className="text-xs font-semibold text-slate-500">Regra<select value={draft.required ? "required" : "optional"} onChange={e => setDrafts(prev => ({ ...prev, [source.id]: { ...draft, required: e.target.value === "required" } }))} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"><option value="required">Obrigatória</option><option value="optional">Opcional</option></select></label>
+                  <label className="text-xs font-semibold text-slate-500">Frequência esperada (h)<input type="number" min="1" max="720" value={draft.hours} onChange={e => setDrafts(prev => ({ ...prev, [source.id]: { ...draft, hours: Number(e.target.value) } }))} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"/></label>
+                  <button disabled={!changed || busyId === source.id} onClick={() => void saveSettings(source)} className="rounded-lg bg-[#0b3977] px-4 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">{busyId === source.id ? "Salvando..." : "Salvar regra"}</button>
+                </div>}
+              </div>;
+            })}</div>
+          </section>;
+        })}</div>
 
         <div className="mt-5 flex justify-end"><button disabled={loading} onClick={() => void load()} className="rounded-xl border border-blue-200 bg-white px-4 py-3 text-sm font-semibold text-blue-700">{loading ? "Atualizando..." : "Atualizar agora"}</button></div>
       </aside>
