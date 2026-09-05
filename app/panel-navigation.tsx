@@ -3,15 +3,32 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 export default function PanelNavigation() {
   const router = useRouter();
   const [navTarget, setNavTarget] = useState<HTMLElement | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
+    let mounted = true;
+
+    async function resolveRole() {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const user = sessionData.session?.user;
+      if (!user || !mounted) return;
+      const { data: profile } = await supabase.from("baja_central_profiles").select("active,role").eq("user_id", user.id).maybeSingle();
+      if (!mounted || !profile?.active) return;
+      setIsAdmin(profile.role === "admin");
+    }
+
     function resolveNav() {
       const nav = document.querySelector("aside nav") as HTMLElement | null;
       setNavTarget(nav);
+
+      const buttons = Array.from(document.querySelectorAll("aside nav button")) as HTMLButtonElement[];
+      const usersButton = buttons.find(button => (button.textContent || "").trim() === "Usuários");
+      if (usersButton) usersButton.style.display = isAdmin ? "" : "none";
     }
 
     function handleClick(event: MouseEvent) {
@@ -21,6 +38,7 @@ export default function PanelNavigation() {
       const label = (button.textContent || "").trim();
 
       if (label === "Usuários" || label.includes("Usuários e Acessos")) {
+        if (!isAdmin) return;
         event.preventDefault();
         event.stopPropagation();
         router.push("/usuarios/uso");
@@ -41,16 +59,18 @@ export default function PanelNavigation() {
       }
     }
 
+    void resolveRole();
     resolveNav();
     const observer = new MutationObserver(resolveNav);
     observer.observe(document.body, { childList: true, subtree: true });
     document.addEventListener("click", handleClick, true);
 
     return () => {
+      mounted = false;
       observer.disconnect();
       document.removeEventListener("click", handleClick, true);
     };
-  }, [router]);
+  }, [router, isAdmin]);
 
   if (!navTarget) return null;
 
