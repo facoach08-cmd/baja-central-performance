@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import PanelNavigation from "./panel-navigation";
 
 export const metadata: Metadata = {
   title: "Baja & Aguiar | Central de Performance",
@@ -9,7 +10,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="pt-BR">
-      <body>{children}</body>
+      <body>
+        <PanelNavigation />
+        {children}
+      </body>
     </html>
   );
 }
