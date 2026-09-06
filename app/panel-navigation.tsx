@@ -22,13 +22,23 @@ export default function PanelNavigation() {
       setIsAdmin(profile.role === "admin");
     }
 
-    function resolveNav() {
+    function resolveUi() {
       const nav = document.querySelector("aside nav") as HTMLElement | null;
       setNavTarget(nav);
 
-      const buttons = Array.from(document.querySelectorAll("aside nav button")) as HTMLButtonElement[];
-      const usersButton = buttons.find(button => (button.textContent || "").trim() === "Usuários");
+      const navButtons = Array.from(document.querySelectorAll("aside nav button")) as HTMLButtonElement[];
+      const usersButton = navButtons.find(button => (button.textContent || "").trim() === "Usuários");
       if (usersButton) usersButton.style.display = isAdmin ? "" : "none";
+
+      const allButtons = Array.from(document.querySelectorAll("button")) as HTMLButtonElement[];
+      allButtons.forEach(button => {
+        const label = (button.textContent || "").trim();
+        if (label === "Primeiro acesso" || label === "Criar acesso") {
+          button.style.display = "none";
+          button.setAttribute("aria-hidden", "true");
+          button.tabIndex = -1;
+        }
+      });
     }
 
     function handleClick(event: MouseEvent) {
@@ -36,6 +46,12 @@ export default function PanelNavigation() {
       const button = target?.closest("button");
       if (!button) return;
       const label = (button.textContent || "").trim();
+
+      if (label === "Primeiro acesso" || label === "Criar acesso") {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
 
       if (label === "Usuários" || label.includes("Usuários e Acessos")) {
         if (!isAdmin) return;
@@ -60,8 +76,8 @@ export default function PanelNavigation() {
     }
 
     void resolveRole();
-    resolveNav();
-    const observer = new MutationObserver(resolveNav);
+    resolveUi();
+    const observer = new MutationObserver(resolveUi);
     observer.observe(document.body, { childList: true, subtree: true });
     document.addEventListener("click", handleClick, true);
 
