@@ -31,6 +31,10 @@ export default function LiveDashboardRefresh() {
       )
       .subscribe();
 
+    const fallbackInterval = setInterval(() => {
+      if (document.visibilityState === "visible") window.location.reload();
+    }, 5 * 60 * 1000);
+
     const onFocus = () => {
       if (document.visibilityState === "visible") window.location.reload();
     };
@@ -38,6 +42,7 @@ export default function LiveDashboardRefresh() {
 
     return () => {
       if (timer) clearTimeout(timer);
+      clearInterval(fallbackInterval);
       document.removeEventListener("visibilitychange", onFocus);
       void supabase.removeChannel(channel);
     };
