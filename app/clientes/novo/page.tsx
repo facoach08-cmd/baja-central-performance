@@ -23,6 +23,23 @@ const emptySource = (): SourceForm => ({
   expected_frequency_hours: 24,
 });
 
+function extractGoogleDriveId(value: string) {
+  const url = value.trim();
+  if (!url) return "";
+  const patterns = [
+    /\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/,
+    /\/document\/d\/([a-zA-Z0-9_-]+)/,
+    /\/presentation\/d\/([a-zA-Z0-9_-]+)/,
+    /\/file\/d\/([a-zA-Z0-9_-]+)/,
+    /[?&]id=([a-zA-Z0-9_-]+)/,
+  ];
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+  return "";
+}
+
 export default function NewClientPage() {
   const [loading, setLoading] = useState(true);
   const [authorized, setAuthorized] = useState(false);
@@ -72,11 +89,21 @@ export default function NewClientPage() {
     setSources(current => current.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   }
 
+  function updateSourceUrl(index: number, source: SourceForm, value: string) {
+    const autoId = source.provider === "google_drive" ? extractGoogleDriveId(value) : source.external_id;
+    updateSource(index, { source_url: value, external_id: autoId });
+  }
+
   async function save() {
     setNotice("");
     setError("");
     if (!form.name.trim() || !form.panel_name.trim() || !form.panel_url.trim()) {
       setError("Preencha cliente, nome do painel e URL oficial do painel.");
+      return;
+    }
+    const invalidDriveSource = sources.find(s => s.source_name.trim() && s.provider === "google_drive" && s.source_url.trim() && !s.external_id.trim());
+    if (invalidDriveSource) {
+      setError(`Não consegui identificar o arquivo Google na URL da fonte “${invalidDriveSource.source_name}”. Cole o link completo do Google Sheets/Drive.`);
       return;
     }
     setBusy(true);
@@ -149,15 +176,14 @@ export default function NewClientPage() {
     </section>
 
     <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex items-center justify-between gap-4"><div><h2 className="text-lg font-bold text-[#0b3977]">Fontes monitoradas</h2><p className="mt-1 text-sm text-slate-500">Adicione Google Sheets ou outras fontes. Para Drive/Sheets, informe também o ID do arquivo.</p></div><button onClick={() => setSources([...sources, emptySource()])} className="rounded-xl border border-blue-200 px-4 py-2 text-sm font-semibold text-blue-700">+ Adicionar fonte</button></div>
+      <div className="flex items-center justify-between gap-4"><div><h2 className="text-lg font-bold text-[#0b3977]">Fontes monitoradas</h2><p className="mt-1 text-sm text-slate-500">Para Google Sheets/Drive, basta colar a URL completa. A Central identifica o ID automaticamente.</p></div><button onClick={() => setSources([...sources, emptySource()])} className="rounded-xl border border-blue-200 px-4 py-2 text-sm font-semibold text-blue-700">+ Adicionar fonte</button></div>
       <div className="mt-4 space-y-4">{sources.map((source, index) => <div key={index} className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
         <input className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="Nome da fonte" value={source.source_name} onChange={e => updateSource(index,{source_name:e.target.value})}/>
-        <select className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" value={source.provider} onChange={e => updateSource(index,{provider:e.target.value})}><option value="google_drive">Google Drive</option><option value="supabase">Supabase</option><option value="api">API</option><option value="other">Outra</option></select>
+        <select className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" value={source.provider} onChange={e => { const provider=e.target.value; updateSource(index,{provider,external_id:provider==='google_drive'?extractGoogleDriveId(source.source_url):source.external_id}); }}><option value="google_drive">Google Drive</option><option value="supabase">Supabase</option><option value="api">API</option><option value="other">Outra</option></select>
         <select className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" value={source.source_type} onChange={e => updateSource(index,{source_type:e.target.value})}><option value="spreadsheet">Planilha</option><option value="database">Banco de dados</option><option value="api">API</option><option value="other">Outra</option></select>
-        <input className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="ID externo / ID do Google Sheet" value={source.external_id} onChange={e => updateSource(index,{external_id:e.target.value})}/>
-        <input className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="URL da fonte" value={source.source_url} onChange={e => updateSource(index,{source_url:e.target.value})}/>
+        <input className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm lg:col-span-2" placeholder="Cole aqui a URL completa da fonte" value={source.source_url} onChange={e => updateSourceUrl(index,source,e.target.value)}/>
         <div className="flex gap-3"><input type="number" min={1} max={720} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" value={source.expected_frequency_hours} onChange={e => updateSource(index,{expected_frequency_hours:Number(e.target.value)})}/><label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold"><input type="checkbox" checked={source.required} onChange={e => updateSource(index,{required:e.target.checked})}/>Obrigatória</label></div>
-      </div>{sources.length>1&&<button onClick={()=>setSources(sources.filter((_,i)=>i!==index))} className="mt-3 text-xs font-semibold text-red-600">Remover fonte</button>}</div>)}</div>
+      </div>{source.provider==='google_drive'&&source.source_url&&<div className="mt-2 text-xs text-slate-500">{source.external_id?`Arquivo identificado automaticamente: ${source.external_id}`:"Não consegui identificar o arquivo nessa URL."}</div>}{sources.length>1&&<button onClick={()=>setSources(sources.filter((_,i)=>i!==index))} className="mt-3 text-xs font-semibold text-red-600">Remover fonte</button>}</div>)}</div>
     </section>
 
     <div className="mt-6 flex justify-end"><button disabled={busy} onClick={()=>void save()} className="rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white disabled:opacity-50">{busy?"Cadastrando...":"Cadastrar cliente e painel"}</button></div>
