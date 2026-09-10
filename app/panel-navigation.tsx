@@ -91,17 +91,32 @@ export default function PanelNavigation() {
   if (!navTarget) return null;
 
   return createPortal(
-    <button
-      type="button"
-      onClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        window.dispatchEvent(new CustomEvent("baja:open-incidents"));
-      }}
-      className="rounded-xl px-4 py-3 text-left text-sm text-blue-100 hover:bg-white/10"
-    >
-      Incidentes
-    </button>,
+    <>
+      {isAdmin && (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            router.push("/clientes/novo");
+          }}
+          className="rounded-xl px-4 py-3 text-left text-sm text-blue-100 hover:bg-white/10"
+        >
+          + Novo Cliente / Painel
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          window.dispatchEvent(new CustomEvent("baja:open-incidents"));
+        }}
+        className="rounded-xl px-4 py-3 text-left text-sm text-blue-100 hover:bg-white/10"
+      >
+        Incidentes
+      </button>
+    </>,
     navTarget,
   );
 }
