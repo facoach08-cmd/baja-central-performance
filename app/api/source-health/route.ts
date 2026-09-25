@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = "https://iuyyvpotkgsuuipyfisw.supabase.co";
 
-export async function POST() {
+async function runSync() {
   const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
   const refreshToken = process.env.GOOGLE_OAUTH_REFRESH_TOKEN;
@@ -136,4 +136,12 @@ export async function POST() {
     updated: results.filter((item) => item.status === "ok").length,
     errors: results.filter((item) => item.status === "error").length,
   });
+}
+
+export async function GET() {
+  return runSync();
+}
+
+export async function POST() {
+  return runSync();
 }
