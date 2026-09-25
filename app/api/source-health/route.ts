@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// Redeploy marker: refresh production environment variables.
 const SUPABASE_URL = "https://iuyyvpotkgsuuipyfisw.supabase.co";
 
 async function runSync() {
@@ -28,7 +27,12 @@ async function runSync() {
 
   const tokenData = await tokenResponse.json();
   if (!tokenResponse.ok || !tokenData.access_token) {
-    return NextResponse.json({ ok: false, error: "Google token refresh failed" }, { status: 502 });
+    return NextResponse.json({
+      ok: false,
+      error: "Google token refresh failed",
+      google_error: tokenData?.error || null,
+      google_error_description: tokenData?.error_description || null,
+    }, { status: 502 });
   }
 
   const supabase = createClient(SUPABASE_URL, serviceRole, {
@@ -53,13 +57,14 @@ async function runSync() {
 
     const fileId = String(source.external_id || "").trim();
     if (!fileId) {
+      const message = "Missing Google file ID";
       await supabase.from("baja_central_data_sources").update({
         last_checked_at: checkedAt,
         last_check_status: "error",
-        last_check_error: "Missing Google file ID",
+        last_check_error: message,
         updated_at: checkedAt,
       }).eq("id", source.id);
-      results.push({ id: source.id, status: "error" });
+      results.push({ id: source.id, source_name: source.source_name, status: "error", error: message });
       continue;
     }
 
@@ -74,7 +79,8 @@ async function runSync() {
 
       const metadata = await metadataResponse.json();
       if (!metadataResponse.ok || !metadata.modifiedTime) {
-        throw new Error("Drive metadata lookup failed");
+        const googleMessage = metadata?.error?.message || "Drive metadata lookup failed";
+        throw new Error("Drive API " + metadataResponse.status + ": " + googleMessage);
       }
 
       const { error: updateError } = await supabase
@@ -105,7 +111,7 @@ async function runSync() {
         last_check_error: message,
         updated_at: checkedAt,
       }).eq("id", source.id);
-      results.push({ id: source.id, status: "error" });
+      results.push({ id: source.id, source_name: source.source_name, status: "error", error: message });
     }
   }
 
@@ -136,6 +142,7 @@ async function runSync() {
     checked: results.length,
     updated: results.filter((item) => item.status === "ok").length,
     errors: results.filter((item) => item.status === "error").length,
+    results,
   });
 }
 
