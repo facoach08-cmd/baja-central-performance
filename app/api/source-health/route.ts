@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+// Redeploy marker: refresh production environment variables.
 const SUPABASE_URL = "https://iuyyvpotkgsuuipyfisw.supabase.co";
 
 async function runSync() {
